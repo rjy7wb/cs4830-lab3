@@ -1,129 +1,166 @@
-# Python program to implement server side of chat room. 
-import socket 
-import select 
-import sys 
+'''
+PAWPRINT : rjy7wb
+5/1/2019
+
+Description:
+Server Login receives input from clients, and interprets those commands.
+a well written program explains itself +40 amirite?
+'''
+
+import sys
+import socket
 from thread import *
 
-  
-def clientthread(username,password,conn, addr): 
-  
-    conn.send("Welcome to this chatroom!") 
-    thisUser = None
-    password = None
-    while True: 
-            try: 
-                message = conn.recv(2048) 
-                if message: 
-                    thisUser, password, list_of_users, message = processInput(thisUser, password, list_of_users, addr[0], message)
-  
-                    message_to_send = "<" + username + "> " + message 
-                    broadcast(message, conn) 
-  
-                else: 
-                    remove(conn) 
-  
-            except: 
-                continue
-  
-def broadcast(message, connection): 
-    for clients in list_of_clients: 
-        if clients!=connection: 
-            try: 
-                clients.send(message) 
-            except: 
-                clients.close() 
-  
-                # if the link is broken, we remove the client 
-                remove(clients) 
-  
-def remove(connection): 
-    if connection in list_of_clients: 
-        list_of_clients.remove(connection) 
-
-def processInput(username, password, userList, address, rawmessage):
-    message = rawmessage.split()
-    
-    command = message.pop()
-    
-    if(username == None):
-        if(command == 'login'):
-            username = splitMessage.pop()
-            password = splitMessage.pop()
-            loginCheck = loginNow(username,password)
-            if(loginCheck == True):
-                userList.append('username')
-                message = "<Server> : " ++ username ++ " joins"
-                return username,password,userList, message
-            
-            elif(loginCheck == False):
-                message = "<Server> : " ++ "Error invalid credentials"
-                return None, None, userList, message
-#MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
-        if(command == 'newuser'):
-            username = message.pop()
-            password = message.pop()
-            if(username not in userList):
-                username, password, userList = createUser(username,password,userList)
-                message = "<Server> : " ++ "creation successful Please Login!"
-                return None, None, userList, message
-            else:
-                message = "<Server> : " ++ "Error account exists"
-                return None, None, userList, message
-#MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
-    else: #UserName has a value
-        if(command == 'login' or command == 'newuser'):
-            message = "<Server> : " ++"Error, you are already logged in"
-            return username, password, userList, message
-        elif(command == 'send'):
-            message = "<" ++ username ++ ">" ++ message
-            return username, password, userList, message
-        elif(command == 'logout'):
-            message = "<Server> : " ++ username ++ " has logged out"
-            userList.remove(username)
-            return None, None, userList, message
-
-def loadLogins(filename): # STRING -> [(STRING,STRING)] 
-    file = open(filename,'r')
-    text = file.read()
-    userandpass = text.split()
-    LoginTable = []
-    
-    for x in userandpass:
-        y = x.split(',')
-        a, b = y[0], y[1]
-        LoginTable.append((a,b))
-    return LoginTable 
-
- 
-  
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM) 
-server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) 
-  
-if len(sys.argv) != 3: 
-    print "Correct usage: script, IP address, port number"
-    exit() 
-  
-IP_address = str(sys.argv[1]) 
-  
-Port = int(sys.argv[2]) 
-  
-server.bind((IP_address, Port)) 
-  
-server.listen(100) 
-  
+host = '127.0.0.1'
+port = 17990
+user_info = {}
+isClientLoggedIn = False
+login_name = ''
+name = 'Server'
 list_of_clients = []
-list_of_users = []
-list_of_users = loadLogins("logins.txt")
+
+def userThread(conn,addr):
+    while True:
+        try:
+            message = conn.recv(1024)
+            if message:
+                ret_message = processMessage(message)
+                broadcast(ret_message,conn)
+            else:
+                remove(conn)
+        except Exception as e:
+            print(e)
+            continue
 
 
-while True: 
-  
-    conn, addr = server.accept() 
-  
-    print addr[0] + " connected"
-  
-    start_new_thread(clientthread,(None,None,conn,addr))     
-  
-conn.close() 
-server.close() 
+def broadcast(message,connection):
+    for clients in list_of_clients:
+        if clients != connection:
+            try:
+                clients.send(message)
+            except:
+                clients.close()
+                remove(clients)
 
+def remove(connection):
+    if connection in list_of_clients:
+        list_of_clients.remove(connection)
+
+def login(message):
+    output = ''
+
+    if isClientLoggedIn is True:
+        print('Already logged in!')
+        return '>Server: Already logged in!'
+    if len(message) != 3:
+        print('Invalid attempt at login!')
+        return '>Server: incorrect usage, correct usage is " login userid password "'
+    inputid = message[1]
+    provided_pass = message[2]
+
+    if inputid in user_info.keys():
+
+        if provided_pass == user_info[inputid]:
+            print('Successful login')
+            change_login(inputid)
+            output = '>Server: ' + login_name + ' joins'
+        else:
+            print('Incorrect login')
+            output = '>Server: Incorrect login'
+    else:
+        print('Incorrect login')
+        output = '>Server: Incorrect login'
+    return output
+
+def newuser(message):
+    if len(message) != 3:
+        print('Invalid attempt at user creation!')
+        return '>Server: incorrect syntax. Correct syntax is: newuser [UserID] [Password]'
+    inputid = message[1]
+    provided_pass = message[2]
+    if inputid in user_info.keys():
+        print("User already exists")
+        return '>Server: Username already taken, please choose another or login to continue'
+    if len(inputid) >= 32:
+        print('Username length invalid.')
+        return '>Server: Please create a username less than 32 characters'
+    if len(provided_pass) < 4 or len(provided_pass) > 8:
+        print('Invalid password length')
+        return '>Server: Invalid password length'
+    user_info[inputid] = provided_pass
+    f = open('users.txt', 'a')
+    f.write('\n' + inputid + ',' + provided_pass)
+    f.close()
+    if isClientLoggedIn == False:
+        print('New User Created. Please login.')
+        appended = 'Please login.'
+    else:
+        print('New User Created.')
+        appended = ''
+    return '>Server: New User Created.' + appended
+
+def change_login(user_id):
+    global isClientLoggedIn
+    global login_name
+    output = ''
+    if isClientLoggedIn == True:
+        print('Connection closed')
+        output = '>Server: Connection closed'
+        isClientLoggedIn = False
+    else:
+        isClientLoggedIn = True
+    login_name = user_id
+    return output   
+
+def logout(message):
+    output = '>Server: Connection closed'
+    if isClientLoggedIn is True:
+        output = change_login('')
+    return output
+
+def send(message):
+    if isClientLoggedIn is False:
+        print('Denied. Please login first.  ')
+        return '>Server: Denied. Please login first.'
+    message = ' '.join(message)
+    message = message[4:]
+    message = ('>' + login_name + ':' + message)
+    print(message)
+    return message
+
+def processMessage(message):
+    outputs = str(message).split(' ')
+    command = outputs[0]
+    function_calls = {
+        'login' : login,
+        'logout' : logout,
+        'send' : send,
+        'newuser' : newuser
+    }
+    if command in function_calls.keys():
+        st = function_calls[command](outputs)
+    else:
+        print('Invalid command')
+        st = '>Server: Invalid command'
+    return st
+
+
+if __name__ == '__main__':
+    file = open('logins.txt', 'r')
+    for line in file:
+        line = line.strip('\n')
+        info = line.split(',')
+        user_info[info[0]] = info[1]
+    file.close()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind((host, port))
+    sock.listen(3)
+    while True:
+
+  
+        #print('listening on', (host, port))
+        #print('Waiting for connection')
+        connection, addr = sock.accept()
+        print("Received connection from ", addr[0], "(", addr[1], ")\n")
+        list_of_clients.append(connection)
+        start_new_thread(userThread,(connection,addr))
